@@ -2,11 +2,14 @@
 
 I'm really bad at remembering things. Especially when it's not a habit yet. This home assistant gadget helped me build good habits around wearing my clear liner braces for the required 22 hours a day. 
 
-This could be used for anything you need to track over time. 
-You can add or remove time if you forget to track. I suggest adding an NFC tag to control the input boolean, as I found that to be the most reliable method.
+This could be used for anything you need to track over time, but if you forget to accurately track you can adjust the tracking. 
+
+I suggest adding an NFC tag to control the input boolean, as I found that to be the most reliable method. My habit was to tap the nfc tag on my liner cases with my phone when I took them on or off. I also had a control for the boolean a few other places, but the NFC tag was by far the easiest to remember. 
 
 I used a combination of telegram and TTS messages to remind myself when i had them off for too long. For the TTS messages it works best if you pair it with BLE based speaker selection so that it reminds you via the nearest speaker. 
-This has been really helpful to me over the past year, and I felt like it would be a waste to simply delete it without sharing. I don't have a lot of experience making packages for home assistant.  I'm sure there's a better way of wrapping this, (and indeed many of the things you find here could be better) but hopefully this helps someone in this form. 
+This has been really helpful to me over the past year, and I felt like it would be a waste to simply delete it without sharing. I don't have a lot of experience making packages for home assistant.  
+
+I'm sure there's a better way of wrapping this, (and indeed many of the things you find here could be better) but hopefully this helps someone in this form. 
 
 If you need help feel free to reach out to me. I'm dcslv on reddit. 
 
