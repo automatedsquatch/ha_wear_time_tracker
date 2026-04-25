@@ -1,0 +1,1238 @@
+# =============================================================================
+# Wear Time Tracker - Home Assistant Package
+# =============================================================================
+# Tracks daily wear time for dental aligners/retainers/liners with:
+#   - On/off toggle and session timing
+#   - Configurable reminders at 40, 50, and 60 minutes
+#   - Daily limit tracking (2 hours off-time per day)
+#   - Weekly and monthly compliance scoring
+#   - Streak tracking and historical averages
+#   - Manual time correction (reduce/add minutes)
+#   - Permanent adjustment storage for historical accuracy
+#
+# Install: copy this file into your Home Assistant packages/ directory.
+# See README.md for setup instructions.
+#
+# https://www.home-assistant.io/docs/configuration/packages/
+# =============================================================================
+
+# --- INPUT BOOLEAN -----------------------------------------------------------
+
+input_boolean:
+  liners_on:
+    name: "__DEVICE_NAME__ On"
+    icon: mdi:tooth
+
+# --- INPUT DATETIME ----------------------------------------------------------
+
+input_datetime:
+  liners_removed_time:
+    name: "__DEVICE_NAME__ Removed Time"
+    has_date: true
+    has_time: true
+    icon: mdi:clock-outline
+  liners_daily_total_off:
+    name: "__DEVICE_NAME__ Daily Total Off"
+    has_date: false
+    has_time: true
+    icon: mdi:timer
+
+# --- INPUT NUMBER ------------------------------------------------------------
+
+input_number:
+  liners_daily_adjustment:
+    name: "__DEVICE_NAME__ Daily Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_reduce_time_input:
+    name: Reduce Time Input
+    min: 1
+    max: 60
+    initial: 30
+    step: 1
+    unit_of_measurement: minutes
+    mode: slider
+  liners_add_time_input:
+    name: Add Time Input
+    min: 1
+    max: 60
+    initial: 30
+    step: 1
+    unit_of_measurement: minutes
+    mode: slider
+  # Permanent adjustment storage - these hold the daily adjustment value
+  # after midnight so historical compliance calculations stay accurate.
+  # The daily migration automation shifts values through this chain.
+  liners_permanent_adjustment_1_days_ago:
+    name: "__DEVICE_NAME__ 1 Day Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_2_days_ago:
+    name: "__DEVICE_NAME__ 2 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_3_days_ago:
+    name: "__DEVICE_NAME__ 3 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_4_days_ago:
+    name: "__DEVICE_NAME__ 4 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_5_days_ago:
+    name: "__DEVICE_NAME__ 5 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_6_days_ago:
+    name: "__DEVICE_NAME__ 6 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_7_days_ago:
+    name: "__DEVICE_NAME__ 7 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_14_days_ago:
+    name: "__DEVICE_NAME__ 14 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_21_days_ago:
+    name: "__DEVICE_NAME__ 21 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+  liners_permanent_adjustment_30_days_ago:
+    name: "__DEVICE_NAME__ 30 Days Ago Adjustment"
+    min: -480
+    max: 480
+    initial: 0
+    step: 1
+    unit_of_measurement: minutes
+    mode: box
+
+# --- HISTORY STATS SENSORS ---------------------------------------------------
+# These use the recorder to calculate how long the toggle has been on/off
+# for each historical day. Requires sufficient recorder history (≥30 days
+# for full monthly tracking).
+
+sensor:
+  # Off-time sensors (hours per day with device removed)
+  - platform: history_stats
+    name: liners_off_time_today
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: liners_off_time_yesterday
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=1) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) }}"
+  - platform: history_stats
+    name: liners_off_time_day_before_yesterday
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=2) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=1) }}"
+  - platform: history_stats
+    name: liners_off_time_3_days_ago
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=3) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=2) }}"
+  - platform: history_stats
+    name: liners_off_time_4_days_ago
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=4) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=3) }}"
+  - platform: history_stats
+    name: liners_off_time_5_days_ago
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=5) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=4) }}"
+  - platform: history_stats
+    name: liners_off_time_6_days_ago
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=6) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=5) }}"
+  - platform: history_stats
+    name: liners_off_time_7_days_ago
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=7) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=6) }}"
+  - platform: history_stats
+    name: liners_off_time_14_days_ago
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=14) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=13) }}"
+  - platform: history_stats
+    name: liners_off_time_21_days_ago
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=21) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=20) }}"
+  - platform: history_stats
+    name: liners_off_time_30_days_ago
+    entity_id: input_boolean.liners_on
+    state: "off"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=30) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=29) }}"
+
+  # Wear-time sensors (hours per day with device worn)
+  - platform: history_stats
+    name: liners_wear_time_today
+    entity_id: input_boolean.liners_on
+    state: "on"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: liners_wear_time_yesterday
+    entity_id: input_boolean.liners_on
+    state: "on"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=1) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) }}"
+  - platform: history_stats
+    name: liners_wear_time_day_before_yesterday
+    entity_id: input_boolean.liners_on
+    state: "on"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=2) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=1) }}"
+  - platform: history_stats
+    name: liners_wear_time_3_days_ago
+    entity_id: input_boolean.liners_on
+    state: "on"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=3) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=2) }}"
+  - platform: history_stats
+    name: liners_wear_time_4_days_ago
+    entity_id: input_boolean.liners_on
+    state: "on"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=4) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=3) }}"
+  - platform: history_stats
+    name: liners_wear_time_5_days_ago
+    entity_id: input_boolean.liners_on
+    state: "on"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=5) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=4) }}"
+  - platform: history_stats
+    name: liners_wear_time_6_days_ago
+    entity_id: input_boolean.liners_on
+    state: "on"
+    type: time
+    start: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=6) }}"
+    end: "{{ now().replace(hour=0, minute=0, second=0) - timedelta(days=5) }}"
+
+# --- TEMPLATE SENSORS --------------------------------------------------------
+
+template:
+  - sensor:
+      - name: "Liners Current Session Time"
+        unique_id: liners_current_session_time
+        state: >
+          {% if is_state('input_boolean.liners_on', 'off') %}
+            {% set removed_time = as_timestamp(states('input_datetime.liners_removed_time')) %}
+            {% set now_time = as_timestamp(now()) %}
+            {% if removed_time %}
+              {{ ((now_time - removed_time) / 60) | round(0) }}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            0
+          {% endif %}
+        unit_of_measurement: "minutes"
+        icon: "mdi:timer"
+
+      - name: "Liners Daily Total Off Time"
+        unique_id: liners_daily_total_off_time
+        state: >
+          {% set base_off_time = states('sensor.liners_off_time_today') | float(0) * 60 %}
+          {% set adjustment = states('input_number.liners_daily_adjustment') | float(0) %}
+          {{ (base_off_time - adjustment) | round(0) }}
+        unit_of_measurement: "minutes"
+        icon: "mdi:clock-time-eight"
+
+      - name: "Liners Compliance Status"
+        unique_id: liners_compliance_status
+        state: >
+          {% set daily_total = states('sensor.liners_daily_total_off_time') | int %}
+          {% set current_session = states('sensor.liners_current_session_time') | int %}
+          {% if current_session > 30 %}
+            Session Limit Exceeded
+          {% elif daily_total > 120 %}
+            Daily Limit Exceeded
+          {% elif is_state('input_boolean.liners_on', 'off') %}
+            Currently Off
+          {% else %}
+            On Track
+          {% endif %}
+        icon: >
+          {% set daily_total = states('sensor.liners_daily_total_off_time') | int %}
+          {% set current_session = states('sensor.liners_current_session_time') | int %}
+          {% if current_session > 30 or daily_total > 120 %}
+            mdi:alert-circle
+          {% elif is_state('input_boolean.liners_on', 'off') %}
+            mdi:tooth-off
+          {% else %}
+            mdi:tooth
+          {% endif %}
+
+      - name: "Liners Daily Compliance Percentage"
+        unique_id: liners_daily_compliance_percentage
+        state: >
+          {% set daily_total = states('sensor.liners_daily_total_off_time') | int %}
+          {% set max_allowed = 120 %}
+          {% if daily_total <= max_allowed %}
+            {{ ((max_allowed - daily_total) / max_allowed * 100) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+        unit_of_measurement: "%"
+        icon: "mdi:percent"
+
+      - name: "Liners Weekly Compliance Score"
+        unique_id: liners_weekly_compliance_score
+        state: >
+          {% set ns = namespace(compliant_days=0, total_days=0) %}
+          {% set today_off_time = states('sensor.liners_daily_total_off_time') | float(0) / 60 %}
+          {% if today_off_time != 0 or states('sensor.liners_off_time_today') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if today_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set yesterday_raw_time = states('sensor.liners_off_time_yesterday') | float(0) %}
+          {% set yesterday_adjustment = states('input_number.liners_permanent_adjustment_1_days_ago') | float(0) %}
+          {% if yesterday_adjustment != 0 %}
+            {% set yesterday_off_time = ((yesterday_raw_time * 60) - yesterday_adjustment) / 60 %}
+          {% else %}
+            {% set yesterday_off_time = yesterday_raw_time %}
+          {% endif %}
+          {% if yesterday_off_time != 0 or states('sensor.liners_off_time_yesterday') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if yesterday_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day2_raw_time = states('sensor.liners_off_time_day_before_yesterday') | float(0) %}
+          {% set day2_adjustment = states('input_number.liners_permanent_adjustment_2_days_ago') | float(0) %}
+          {% if day2_adjustment != 0 %}
+            {% set day2_off_time = ((day2_raw_time * 60) - day2_adjustment) / 60 %}
+          {% else %}
+            {% set day2_off_time = day2_raw_time %}
+          {% endif %}
+          {% if day2_off_time != 0 or states('sensor.liners_off_time_day_before_yesterday') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day2_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day3_raw_time = states('sensor.liners_off_time_3_days_ago') | float(0) %}
+          {% set day3_adjustment = states('input_number.liners_permanent_adjustment_3_days_ago') | float(0) %}
+          {% if day3_adjustment != 0 %}
+            {% set day3_off_time = ((day3_raw_time * 60) - day3_adjustment) / 60 %}
+          {% else %}
+            {% set day3_off_time = day3_raw_time %}
+          {% endif %}
+          {% if day3_off_time != 0 or states('sensor.liners_off_time_3_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day3_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day4_raw_time = states('sensor.liners_off_time_4_days_ago') | float(0) %}
+          {% set day4_adjustment = states('input_number.liners_permanent_adjustment_4_days_ago') | float(0) %}
+          {% if day4_adjustment != 0 %}
+            {% set day4_off_time = ((day4_raw_time * 60) - day4_adjustment) / 60 %}
+          {% else %}
+            {% set day4_off_time = day4_raw_time %}
+          {% endif %}
+          {% if day4_off_time != 0 or states('sensor.liners_off_time_4_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day4_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day5_raw_time = states('sensor.liners_off_time_5_days_ago') | float(0) %}
+          {% set day5_adjustment = states('input_number.liners_permanent_adjustment_5_days_ago') | float(0) %}
+          {% if day5_adjustment != 0 %}
+            {% set day5_off_time = ((day5_raw_time * 60) - day5_adjustment) / 60 %}
+          {% else %}
+            {% set day5_off_time = day5_raw_time %}
+          {% endif %}
+          {% if day5_off_time != 0 or states('sensor.liners_off_time_5_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day5_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day6_raw_time = states('sensor.liners_off_time_6_days_ago') | float(0) %}
+          {% set day6_adjustment = states('input_number.liners_permanent_adjustment_6_days_ago') | float(0) %}
+          {% if day6_adjustment != 0 %}
+            {% set day6_off_time = ((day6_raw_time * 60) - day6_adjustment) / 60 %}
+          {% else %}
+            {% set day6_off_time = day6_raw_time %}
+          {% endif %}
+          {% if day6_off_time != 0 or states('sensor.liners_off_time_6_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day6_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% if ns.total_days > 0 %}
+            {{ (ns.compliant_days / ns.total_days * 100) | round(1) }}
+          {% else %}
+            100
+          {% endif %}
+        unit_of_measurement: "%"
+        icon: "mdi:calendar-week"
+
+      - name: "Liners Monthly Compliance Score"
+        unique_id: liners_monthly_compliance_score
+        state: >
+          {% set ns = namespace(compliant_days=0, total_days=0) %}
+          {% set today_off_time = states('sensor.liners_daily_total_off_time') | float(0) / 60 %}
+          {% if today_off_time != 0 or states('sensor.liners_off_time_today') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if today_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set yesterday_raw_time = states('sensor.liners_off_time_yesterday') | float(0) %}
+          {% set yesterday_adjustment = states('input_number.liners_permanent_adjustment_1_days_ago') | float(0) %}
+          {% if yesterday_adjustment != 0 %}
+            {% set yesterday_off_time = ((yesterday_raw_time * 60) - yesterday_adjustment) / 60 %}
+          {% else %}
+            {% set yesterday_off_time = yesterday_raw_time %}
+          {% endif %}
+          {% if yesterday_off_time != 0 or states('sensor.liners_off_time_yesterday') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if yesterday_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day2_raw_time = states('sensor.liners_off_time_day_before_yesterday') | float(0) %}
+          {% set day2_adjustment = states('input_number.liners_permanent_adjustment_2_days_ago') | float(0) %}
+          {% if day2_adjustment != 0 %}
+            {% set day2_off_time = ((day2_raw_time * 60) - day2_adjustment) / 60 %}
+          {% else %}
+            {% set day2_off_time = day2_raw_time %}
+          {% endif %}
+          {% if day2_off_time != 0 or states('sensor.liners_off_time_day_before_yesterday') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day2_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day3_raw_time = states('sensor.liners_off_time_3_days_ago') | float(0) %}
+          {% set day3_adjustment = states('input_number.liners_permanent_adjustment_3_days_ago') | float(0) %}
+          {% if day3_adjustment != 0 %}
+            {% set day3_off_time = ((day3_raw_time * 60) - day3_adjustment) / 60 %}
+          {% else %}
+            {% set day3_off_time = day3_raw_time %}
+          {% endif %}
+          {% if day3_off_time != 0 or states('sensor.liners_off_time_3_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day3_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day4_raw_time = states('sensor.liners_off_time_4_days_ago') | float(0) %}
+          {% set day4_adjustment = states('input_number.liners_permanent_adjustment_4_days_ago') | float(0) %}
+          {% if day4_adjustment != 0 %}
+            {% set day4_off_time = ((day4_raw_time * 60) - day4_adjustment) / 60 %}
+          {% else %}
+            {% set day4_off_time = day4_raw_time %}
+          {% endif %}
+          {% if day4_off_time != 0 or states('sensor.liners_off_time_4_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day4_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day5_raw_time = states('sensor.liners_off_time_5_days_ago') | float(0) %}
+          {% set day5_adjustment = states('input_number.liners_permanent_adjustment_5_days_ago') | float(0) %}
+          {% if day5_adjustment != 0 %}
+            {% set day5_off_time = ((day5_raw_time * 60) - day5_adjustment) / 60 %}
+          {% else %}
+            {% set day5_off_time = day5_raw_time %}
+          {% endif %}
+          {% if day5_off_time != 0 or states('sensor.liners_off_time_5_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day5_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day6_raw_time = states('sensor.liners_off_time_6_days_ago') | float(0) %}
+          {% set day6_adjustment = states('input_number.liners_permanent_adjustment_6_days_ago') | float(0) %}
+          {% if day6_adjustment != 0 %}
+            {% set day6_off_time = ((day6_raw_time * 60) - day6_adjustment) / 60 %}
+          {% else %}
+            {% set day6_off_time = day6_raw_time %}
+          {% endif %}
+          {% if day6_off_time != 0 or states('sensor.liners_off_time_6_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day6_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day7_raw_time = states('sensor.liners_off_time_7_days_ago') | float(0) %}
+          {% set day7_adjustment = states('input_number.liners_permanent_adjustment_7_days_ago') | float(0) %}
+          {% if day7_adjustment != 0 %}
+            {% set day7_off_time = ((day7_raw_time * 60) - day7_adjustment) / 60 %}
+          {% else %}
+            {% set day7_off_time = day7_raw_time %}
+          {% endif %}
+          {% if day7_off_time != 0 or states('sensor.liners_off_time_7_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day7_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day14_raw_time = states('sensor.liners_off_time_14_days_ago') | float(0) %}
+          {% set day14_adjustment = states('input_number.liners_permanent_adjustment_14_days_ago') | float(0) %}
+          {% if day14_adjustment != 0 %}
+            {% set day14_off_time = ((day14_raw_time * 60) - day14_adjustment) / 60 %}
+          {% else %}
+            {% set day14_off_time = day14_raw_time %}
+          {% endif %}
+          {% if day14_off_time != 0 or states('sensor.liners_off_time_14_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day14_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day21_raw_time = states('sensor.liners_off_time_21_days_ago') | float(0) %}
+          {% set day21_adjustment = states('input_number.liners_permanent_adjustment_21_days_ago') | float(0) %}
+          {% if day21_adjustment != 0 %}
+            {% set day21_off_time = ((day21_raw_time * 60) - day21_adjustment) / 60 %}
+          {% else %}
+            {% set day21_off_time = day21_raw_time %}
+          {% endif %}
+          {% if day21_off_time != 0 or states('sensor.liners_off_time_21_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day21_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% set day30_raw_time = states('sensor.liners_off_time_30_days_ago') | float(0) %}
+          {% set day30_adjustment = states('input_number.liners_permanent_adjustment_30_days_ago') | float(0) %}
+          {% if day30_adjustment != 0 %}
+            {% set day30_off_time = ((day30_raw_time * 60) - day30_adjustment) / 60 %}
+          {% else %}
+            {% set day30_off_time = day30_raw_time %}
+          {% endif %}
+          {% if day30_off_time != 0 or states('sensor.liners_off_time_30_days_ago') not in ['unknown', 'unavailable'] %}
+            {% set ns.total_days = ns.total_days + 1 %}
+            {% if day30_off_time <= 2.0 %}
+              {% set ns.compliant_days = ns.compliant_days + 1 %}
+            {% endif %}
+          {% endif %}
+          {% if ns.total_days > 0 %}
+            {{ (ns.compliant_days / ns.total_days * 100) | round(1) }}
+          {% else %}
+            100
+          {% endif %}
+        unit_of_measurement: "%"
+        icon: "mdi:calendar-month"
+
+      - name: "Liners Streak Days"
+        unique_id: liners_streak_days
+        state: >
+          {% set ns = namespace(streak=0, continue=true) %}
+          {% if ns.continue %}
+            {% set today_off_time = states('sensor.liners_daily_total_off_time') | float(0) / 60 %}
+            {% if today_off_time <= 2.0 and states('sensor.liners_off_time_today') not in ['unknown', 'unavailable'] %}
+              {% set ns.streak = ns.streak + 1 %}
+            {% else %}
+              {% set ns.continue = false %}
+            {% endif %}
+          {% endif %}
+          {% if ns.continue %}
+            {% set yesterday_raw_time = states('sensor.liners_off_time_yesterday') | float(0) %}
+            {% set yesterday_adjustment = states('input_number.liners_permanent_adjustment_1_days_ago') | float(0) %}
+            {% if yesterday_adjustment != 0 %}
+              {% set yesterday_off_time = ((yesterday_raw_time * 60) - yesterday_adjustment) / 60 %}
+            {% else %}
+              {% set yesterday_off_time = yesterday_raw_time %}
+            {% endif %}
+            {% if yesterday_off_time <= 2.0 and states('sensor.liners_off_time_yesterday') not in ['unknown', 'unavailable'] %}
+              {% set ns.streak = ns.streak + 1 %}
+            {% else %}
+              {% set ns.continue = false %}
+            {% endif %}
+          {% endif %}
+          {% if ns.continue %}
+            {% set day2_raw_time = states('sensor.liners_off_time_day_before_yesterday') | float(0) %}
+            {% set day2_adjustment = states('input_number.liners_permanent_adjustment_2_days_ago') | float(0) %}
+            {% if day2_adjustment != 0 %}
+              {% set day2_off_time = ((day2_raw_time * 60) - day2_adjustment) / 60 %}
+            {% else %}
+              {% set day2_off_time = day2_raw_time %}
+            {% endif %}
+            {% if day2_off_time <= 2.0 and states('sensor.liners_off_time_day_before_yesterday') not in ['unknown', 'unavailable'] %}
+              {% set ns.streak = ns.streak + 1 %}
+            {% else %}
+              {% set ns.continue = false %}
+            {% endif %}
+          {% endif %}
+          {% if ns.continue %}
+            {% set day3_raw_time = states('sensor.liners_off_time_3_days_ago') | float(0) %}
+            {% set day3_adjustment = states('input_number.liners_permanent_adjustment_3_days_ago') | float(0) %}
+            {% if day3_adjustment != 0 %}
+              {% set day3_off_time = ((day3_raw_time * 60) - day3_adjustment) / 60 %}
+            {% else %}
+              {% set day3_off_time = day3_raw_time %}
+            {% endif %}
+            {% if day3_off_time <= 2.0 and states('sensor.liners_off_time_3_days_ago') not in ['unknown', 'unavailable'] %}
+              {% set ns.streak = ns.streak + 1 %}
+            {% else %}
+              {% set ns.continue = false %}
+            {% endif %}
+          {% endif %}
+          {% if ns.continue %}
+            {% set day4_raw_time = states('sensor.liners_off_time_4_days_ago') | float(0) %}
+            {% set day4_adjustment = states('input_number.liners_permanent_adjustment_4_days_ago') | float(0) %}
+            {% if day4_adjustment != 0 %}
+              {% set day4_off_time = ((day4_raw_time * 60) - day4_adjustment) / 60 %}
+            {% else %}
+              {% set day4_off_time = day4_raw_time %}
+            {% endif %}
+            {% if day4_off_time <= 2.0 and states('sensor.liners_off_time_4_days_ago') not in ['unknown', 'unavailable'] %}
+              {% set ns.streak = ns.streak + 1 %}
+            {% else %}
+              {% set ns.continue = false %}
+            {% endif %}
+          {% endif %}
+          {% if ns.continue %}
+            {% set day5_raw_time = states('sensor.liners_off_time_5_days_ago') | float(0) %}
+            {% set day5_adjustment = states('input_number.liners_permanent_adjustment_5_days_ago') | float(0) %}
+            {% if day5_adjustment != 0 %}
+              {% set day5_off_time = ((day5_raw_time * 60) - day5_adjustment) / 60 %}
+            {% else %}
+              {% set day5_off_time = day5_raw_time %}
+            {% endif %}
+            {% if day5_off_time <= 2.0 and states('sensor.liners_off_time_5_days_ago') not in ['unknown', 'unavailable'] %}
+              {% set ns.streak = ns.streak + 1 %}
+            {% else %}
+              {% set ns.continue = false %}
+            {% endif %}
+          {% endif %}
+          {% if ns.continue %}
+            {% set day6_raw_time = states('sensor.liners_off_time_6_days_ago') | float(0) %}
+            {% set day6_adjustment = states('input_number.liners_permanent_adjustment_6_days_ago') | float(0) %}
+            {% if day6_adjustment != 0 %}
+              {% set day6_off_time = ((day6_raw_time * 60) - day6_adjustment) / 60 %}
+            {% else %}
+              {% set day6_off_time = day6_raw_time %}
+            {% endif %}
+            {% if day6_off_time <= 2.0 and states('sensor.liners_off_time_6_days_ago') not in ['unknown', 'unavailable'] %}
+              {% set ns.streak = ns.streak + 1 %}
+            {% else %}
+              {% set ns.continue = false %}
+            {% endif %}
+          {% endif %}
+          {{ ns.streak }}
+        unit_of_measurement: "days"
+        icon: "mdi:fire"
+
+      - name: "Liners Daily Wear Hours"
+        unique_id: liners_daily_wear_hours
+        state: >
+          {% set off_time_hours = states('sensor.liners_off_time_today') | float(0) %}
+          {% set wear_hours = 24 - off_time_hours %}
+          {{ wear_hours | round(1) }}
+        unit_of_measurement: "hours"
+        icon: "mdi:clock"
+        state_class: measurement
+
+      - name: "Liners Weekly Average Hours"
+        unique_id: liners_weekly_average_hours
+        state: >
+          {% set today_wear = states('sensor.liners_daily_wear_hours') | float(0) %}
+          {% set yesterday_off = states('sensor.liners_off_time_yesterday') | float(0) %}
+          {% set yesterday_wear = 24 - yesterday_off %}
+          {% set day2_off = states('sensor.liners_off_time_day_before_yesterday') | float(0) %}
+          {% set day2_wear = 24 - day2_off if states('sensor.liners_off_time_day_before_yesterday') not in ['unknown', 'unavailable'] else 0 %}
+          {% set day3_off = states('sensor.liners_off_time_3_days_ago') | float(0) %}
+          {% set day3_wear = 24 - day3_off if states('sensor.liners_off_time_3_days_ago') not in ['unknown', 'unavailable'] else 0 %}
+          {% set day4_off = states('sensor.liners_off_time_4_days_ago') | float(0) %}
+          {% set day4_wear = 24 - day4_off if states('sensor.liners_off_time_4_days_ago') not in ['unknown', 'unavailable'] else 0 %}
+          {% set day5_off = states('sensor.liners_off_time_5_days_ago') | float(0) %}
+          {% set day5_wear = 24 - day5_off if states('sensor.liners_off_time_5_days_ago') not in ['unknown', 'unavailable'] else 0 %}
+          {% set day6_off = states('sensor.liners_off_time_6_days_ago') | float(0) %}
+          {% set day6_wear = 24 - day6_off if states('sensor.liners_off_time_6_days_ago') not in ['unknown', 'unavailable'] else 0 %}
+          {% set valid_days = 2 %}
+          {% set valid_days = valid_days + (1 if states('sensor.liners_off_time_day_before_yesterday') not in ['unknown', 'unavailable'] else 0) %}
+          {% set valid_days = valid_days + (1 if states('sensor.liners_off_time_3_days_ago') not in ['unknown', 'unavailable'] else 0) %}
+          {% set valid_days = valid_days + (1 if states('sensor.liners_off_time_4_days_ago') not in ['unknown', 'unavailable'] else 0) %}
+          {% set valid_days = valid_days + (1 if states('sensor.liners_off_time_5_days_ago') not in ['unknown', 'unavailable'] else 0) %}
+          {% set valid_days = valid_days + (1 if states('sensor.liners_off_time_6_days_ago') not in ['unknown', 'unavailable'] else 0) %}
+          {% set total_wear = today_wear + yesterday_wear + day2_wear + day3_wear + day4_wear + day5_wear + day6_wear %}
+          {{ (total_wear / valid_days) | round(1) if valid_days > 0 else 0 }}
+        unit_of_measurement: "hours"
+        icon: "mdi:calendar-week"
+
+      - name: "Liners Monthly Average Hours"
+        unique_id: liners_monthly_average_hours
+        state: >
+          {% set ns = namespace(total_wear=0, valid_days=0) %}
+          {% set sensors = [
+            'sensor.liners_off_time_today',
+            'sensor.liners_off_time_yesterday',
+            'sensor.liners_off_time_day_before_yesterday',
+            'sensor.liners_off_time_3_days_ago',
+            'sensor.liners_off_time_4_days_ago',
+            'sensor.liners_off_time_5_days_ago',
+            'sensor.liners_off_time_6_days_ago',
+            'sensor.liners_off_time_7_days_ago',
+            'sensor.liners_off_time_14_days_ago',
+            'sensor.liners_off_time_21_days_ago',
+            'sensor.liners_off_time_30_days_ago'
+          ] %}
+          {% for sensor in sensors %}
+            {% set off_time = states(sensor) | float(0) %}
+            {% if states(sensor) not in ['unknown', 'unavailable'] %}
+              {% set wear_time = 24 - off_time %}
+              {% set ns.total_wear = ns.total_wear + wear_time %}
+              {% set ns.valid_days = ns.valid_days + 1 %}
+            {% endif %}
+          {% endfor %}
+          {{ (ns.total_wear / ns.valid_days) | round(1) if ns.valid_days > 0 else 0 }}
+        unit_of_measurement: "hours"
+        icon: "mdi:calendar-month"
+
+      # Adjusted historical wear time sensors for dashboard chart display
+      - name: "Liners Adjusted Wear Time Yesterday"
+        unique_id: liners_adjusted_wear_time_yesterday
+        state: >
+          {% set raw_off_time = states('sensor.liners_off_time_yesterday') | float(0) %}
+          {% set adjustment = states('input_number.liners_permanent_adjustment_1_days_ago') | float(0) %}
+          {% set adjusted_off_hours = ((raw_off_time * 60) - adjustment) / 60 %}
+          {{ (24 - adjusted_off_hours) | round(1) }}
+        unit_of_measurement: "hours"
+        icon: "mdi:clock"
+      - name: "Liners Adjusted Wear Time 2 Days Ago"
+        unique_id: liners_adjusted_wear_time_2_days_ago
+        state: >
+          {% set raw_off_time = states('sensor.liners_off_time_day_before_yesterday') | float(0) %}
+          {% set adjustment = states('input_number.liners_permanent_adjustment_2_days_ago') | float(0) %}
+          {% set adjusted_off_hours = ((raw_off_time * 60) - adjustment) / 60 %}
+          {{ (24 - adjusted_off_hours) | round(1) }}
+        unit_of_measurement: "hours"
+        icon: "mdi:clock"
+      - name: "Liners Adjusted Wear Time 3 Days Ago"
+        unique_id: liners_adjusted_wear_time_3_days_ago
+        state: >
+          {% set raw_off_time = states('sensor.liners_off_time_3_days_ago') | float(0) %}
+          {% set adjustment = states('input_number.liners_permanent_adjustment_3_days_ago') | float(0) %}
+          {% set adjusted_off_hours = ((raw_off_time * 60) - adjustment) / 60 %}
+          {{ (24 - adjusted_off_hours) | round(1) }}
+        unit_of_measurement: "hours"
+        icon: "mdi:clock"
+      - name: "Liners Adjusted Wear Time 4 Days Ago"
+        unique_id: liners_adjusted_wear_time_4_days_ago
+        state: >
+          {% set raw_off_time = states('sensor.liners_off_time_4_days_ago') | float(0) %}
+          {% set adjustment = states('input_number.liners_permanent_adjustment_4_days_ago') | float(0) %}
+          {% set adjusted_off_hours = ((raw_off_time * 60) - adjustment) / 60 %}
+          {{ (24 - adjusted_off_hours) | round(1) }}
+        unit_of_measurement: "hours"
+        icon: "mdi:clock"
+      - name: "Liners Adjusted Wear Time 5 Days Ago"
+        unique_id: liners_adjusted_wear_time_5_days_ago
+        state: >
+          {% set raw_off_time = states('sensor.liners_off_time_5_days_ago') | float(0) %}
+          {% set adjustment = states('input_number.liners_permanent_adjustment_5_days_ago') | float(0) %}
+          {% set adjusted_off_hours = ((raw_off_time * 60) - adjustment) / 60 %}
+          {{ (24 - adjusted_off_hours) | round(1) }}
+        unit_of_measurement: "hours"
+        icon: "mdi:clock"
+      - name: "Liners Adjusted Wear Time 6 Days Ago"
+        unique_id: liners_adjusted_wear_time_6_days_ago
+        state: >
+          {% set raw_off_time = states('sensor.liners_off_time_6_days_ago') | float(0) %}
+          {% set adjustment = states('input_number.liners_permanent_adjustment_6_days_ago') | float(0) %}
+          {% set adjusted_off_hours = ((raw_off_time * 60) - adjustment) / 60 %}
+          {{ (24 - adjusted_off_hours) | round(1) }}
+        unit_of_measurement: "hours"
+        icon: "mdi:clock"
+
+# --- AUTOMATIONS -------------------------------------------------------------
+
+automation:
+  # Core tracking: records removal/replacement times and accumulates daily totals
+  - id: liners_tracking
+    alias: Wear Time - Tracking
+    description: Track when device is removed/replaced and update time tracking
+    triggers:
+      - entity_id: input_boolean.liners_on
+        trigger: state
+    actions:
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.liners_on
+                state: "off"
+            sequence:
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.liners_removed_time
+                data:
+                  datetime: "{{ now() }}"
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.liners_on
+                state: "on"
+            sequence:
+              - variables:
+                  session_minutes: >
+                    {% set removed_time = as_timestamp(states('input_datetime.liners_removed_time')) %}
+                    {% set now_time = as_timestamp(now()) %}
+                    {% if removed_time %}
+                      {{ ((now_time - removed_time) / 60) | round(0) }}
+                    {% else %}
+                      0
+                    {% endif %}
+                  current_daily_total: >
+                    {% set total_seconds = state_attr('input_datetime.liners_daily_total_off', 'timestamp') %}
+                    {% if total_seconds %}
+                      {{ (total_seconds / 60) | round(0) }}
+                    {% else %}
+                      0
+                    {% endif %}
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.liners_daily_total_off
+                data:
+                  time: >
+                    {% set new_total_minutes = current_daily_total | int + session_minutes | int %}
+                    {% set hours = (new_total_minutes / 60) | int %}
+                    {% set minutes = new_total_minutes % 60 %}
+                    {{ '{:02d}:{:02d}:00'.format(hours, minutes) }}
+    mode: single
+
+  # Session reminders: alert at 40, 50, and 60 minutes of continuous removal
+  - id: liners_reminder_40_minutes
+    alias: Wear Time - 40 Minute Reminder
+    description: Alert at 40 minutes with notification and optional TTS
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.liners_current_session_time
+        above: 39
+    conditions:
+      - condition: state
+        entity_id: input_boolean.liners_on
+        state: "off"
+      - condition: numeric_state
+        entity_id: sensor.liners_current_session_time
+        below: 50
+    actions:
+      - action: __NOTIFY_SERVICE__
+        data:
+          title: "__DEVICE_NAME_UPPER__ - 40 Minute Alert"
+          message: >-
+            Duration: {{ states('sensor.liners_current_session_time') }} minutes.
+            Consider putting your __DEVICE_NAME__ back in soon.
+      - if:
+          - condition: state
+            entity_id: __PRESENCE_SENSOR__
+            state: "on"
+        then:
+          - action: media_player.volume_set
+            target:
+              entity_id: __DEFAULT_SPEAKER__
+            data:
+              volume_level: 0.5
+          - action: __TTS_SERVICE__
+            data:
+              entity_id: __DEFAULT_SPEAKER__
+              message: "Your __DEVICE_NAME__ have been out for forty minutes"
+    mode: single
+
+  - id: liners_reminder_50_minutes
+    alias: Wear Time - 50 Minute Reminder
+    description: Alert at 50 minutes with notification and optional TTS
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.liners_current_session_time
+        above: 49
+    conditions:
+      - condition: state
+        entity_id: input_boolean.liners_on
+        state: "off"
+      - condition: numeric_state
+        entity_id: sensor.liners_current_session_time
+        below: 60
+    actions:
+      - action: __NOTIFY_SERVICE__
+        data:
+          title: "__DEVICE_NAME_UPPER__ - 50 Minute Warning"
+          message: >-
+            Duration: {{ states('sensor.liners_current_session_time') }} minutes.
+            Approaching 1 hour - put your __DEVICE_NAME__ back in soon.
+      - if:
+          - condition: state
+            entity_id: __PRESENCE_SENSOR__
+            state: "on"
+        then:
+          - action: media_player.volume_set
+            target:
+              entity_id: __DEFAULT_SPEAKER__
+            data:
+              volume_level: 0.5
+          - action: __TTS_SERVICE__
+            data:
+              entity_id: __DEFAULT_SPEAKER__
+              message: "Your __DEVICE_NAME__ have been out for fifty minutes"
+    mode: single
+
+  - id: liners_reminder_60_minutes
+    alias: Wear Time - 60 Minute Reminder
+    description: Alert at 60 minutes (1 hour) with notification and optional TTS
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.liners_current_session_time
+        above: 59
+    conditions:
+      - condition: state
+        entity_id: input_boolean.liners_on
+        state: "off"
+      - condition: numeric_state
+        entity_id: sensor.liners_current_session_time
+        below: 70
+    actions:
+      - action: __NOTIFY_SERVICE__
+        data:
+          title: "__DEVICE_NAME_UPPER__ - 1 Hour Alert"
+          message: >-
+            Duration: {{ states('sensor.liners_current_session_time') }} minutes.
+            1 hour mark reached - put your __DEVICE_NAME__ back in now.
+      - if:
+          - condition: state
+            entity_id: __PRESENCE_SENSOR__
+            state: "on"
+        then:
+          - action: media_player.volume_set
+            target:
+              entity_id: __DEFAULT_SPEAKER__
+            data:
+              volume_level: 0.5
+          - action: __TTS_SERVICE__
+            data:
+              entity_id: __DEFAULT_SPEAKER__
+              message: "Your __DEVICE_NAME__ have been out for one hour"
+    mode: single
+
+  # Daily limit: alert when total off-time exceeds 2 hours
+  - id: liners_2_hour_daily_warning
+    alias: Wear Time - 2 Hour Daily Limit Warning
+    description: Notify when device has been off for 2+ hours total today
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.liners_daily_total_off_time
+        above: 119
+    conditions:
+      - condition: numeric_state
+        entity_id: sensor.liners_daily_total_off_time
+        below: 140
+    actions:
+      - action: __NOTIFY_SERVICE__
+        data:
+          title: "__DEVICE_NAME_UPPER__ - Daily Limit Reached"
+          message: >-
+            Total time off today: {{ states('sensor.liners_daily_total_off_time') }} minutes.
+            Daily limit of 2 hours (120 minutes) reached.
+            Put your __DEVICE_NAME__ back in for the rest of the day.
+      - if:
+          - condition: state
+            entity_id: __PRESENCE_SENSOR__
+            state: "on"
+        then:
+          - action: media_player.volume_set
+            target:
+              entity_id: __DEFAULT_SPEAKER__
+            data:
+              volume_level: 0.5
+          - action: __TTS_SERVICE__
+            data:
+              entity_id: __DEFAULT_SPEAKER__
+              message: "Your __DEVICE_NAME__ have been out for the two hour daily limit"
+    mode: single
+
+  # Midnight reset: clears daily total for the new day
+  - id: liners_daily_reset
+    alias: Wear Time - Daily Reset
+    description: Reset daily total at midnight
+    triggers:
+      - trigger: time
+        at: "00:00:00"
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.liners_daily_total_off
+        data:
+          time: "00:00:00"
+    mode: single
+
+  # Adjustment migration: shifts daily correction values into permanent
+  # storage so historical compliance calculations remain accurate after
+  # the history_stats sensors roll over at midnight.
+  - id: liners_daily_adjustment_migration
+    alias: Wear Time - Daily Adjustment Migration
+    description: >-
+      Migrate time adjustments to permanent storage and reset daily adjustment.
+      Runs 30 seconds after midnight so history_stats resets first.
+    triggers:
+      - trigger: time
+        at: "00:00:30"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_30_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_21_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_21_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_14_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_14_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_7_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_7_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_6_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_6_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_5_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_5_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_4_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_4_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_3_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_3_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_2_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_2_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_1_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_1_days_ago
+        data:
+          value: "{{ states('input_number.liners_daily_adjustment') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_daily_adjustment
+        data:
+          value: 0
+      - action: logbook.log
+        data:
+          name: Wear Time Adjustment Migration
+          message: >-
+            Migrated today's adjustment ({{ states('input_number.liners_daily_adjustment') }}
+            minutes) to permanent storage
+    mode: single
+
+# --- SCRIPTS -----------------------------------------------------------------
+
+script:
+  reduce_liner_time:
+    alias: Reduce Recorded Off-Time
+    description: Reduce today's recorded off-time by the specified number of minutes
+    sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_daily_adjustment
+        data:
+          value: "{{ states('input_number.liners_daily_adjustment') | float + states('input_number.liners_reduce_time_input') | float }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_reduce_time_input
+        data:
+          value: 30
+      - action: logbook.log
+        data:
+          name: Wear Time Correction
+          message: "Reduced recorded off-time by {{ states('input_number.liners_reduce_time_input') }} minutes"
+          domain: script
+
+  add_liner_time:
+    alias: Add Recorded Off-Time
+    description: Add the specified number of minutes to today's recorded off-time
+    sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_daily_adjustment
+        data:
+          value: "{{ states('input_number.liners_daily_adjustment') | float - states('input_number.liners_add_time_input') | float }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_add_time_input
+        data:
+          value: 30
+      - action: logbook.log
+        data:
+          name: Wear Time Correction
+          message: "Added {{ states('input_number.liners_add_time_input') }} minutes to recorded off-time"
+          domain: script
+
+  reset_liner_daily_adjustment:
+    alias: Reset Daily Adjustment
+    description: Reset today's time adjustment back to zero
+    sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_daily_adjustment
+        data:
+          value: 0
+      - action: logbook.log
+        data:
+          name: Wear Time Correction
+          message: Reset daily time adjustment to zero
+          domain: script
+
+  migrate_liner_adjustments_manually:
+    alias: Migrate Adjustments Manually
+    description: >-
+      Manually trigger adjustment migration (same as the nightly automation).
+      Use this if the nightly migration was missed or for testing.
+    sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_30_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_21_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_21_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_14_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_14_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_7_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_7_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_6_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_6_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_5_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_5_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_4_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_4_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_3_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_3_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_2_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_2_days_ago
+        data:
+          value: "{{ states('input_number.liners_permanent_adjustment_1_days_ago') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_permanent_adjustment_1_days_ago
+        data:
+          value: "{{ states('input_number.liners_daily_adjustment') | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.liners_daily_adjustment
+        data:
+          value: 0
+      - action: logbook.log
+        data:
+          name: Wear Time Adjustment Migration
+          message: Manually migrated today's adjustment to permanent storage
+          domain: script

@@ -1,0 +1,197 @@
+# =============================================================================
+# Wear Time Tracker - Dashboard Cards
+# =============================================================================
+# Add this as a view/tab in your Lovelace dashboard, or paste the cards
+# into an existing view.
+#
+# DEPENDENCY: The 7-day bar chart requires the mini-graph-card custom card.
+# Install via HACS: https://github.com/kalkih/mini-graph-card
+# If you don't want to install it, delete the mini-graph-card section and
+# the chart will simply be absent.
+# =============================================================================
+
+type: vertical-stack
+cards:
+  - type: markdown
+    content: |
+      # __DEVICE_NAME_UPPER__ Wear Time Tracker
+      Track your daily wear time and patterns
+
+  # --- Status row: on/off toggle + current session timer ---
+  - type: horizontal-stack
+    cards:
+      - type: entities
+        entities:
+          - entity: input_boolean.liners_on
+            name: "On/Off"
+            icon: mdi:tooth
+      - type: entity
+        entity: sensor.liners_current_session_time
+        name: "Current Off Time"
+        state_color: true
+        unit: minutes
+        icon: mdi:timer-sand
+
+  # --- Summary row: today / weekly avg / monthly avg ---
+  - type: horizontal-stack
+    cards:
+      - type: entity
+        entity: sensor.liners_daily_wear_hours
+        name: "Today"
+        state_color: true
+        unit: hours
+      - type: entity
+        entity: sensor.liners_weekly_average_hours
+        name: "Weekly Avg"
+        state_color: true
+        unit: hours
+      - type: entity
+        entity: sensor.liners_monthly_average_hours
+        name: "Monthly Avg"
+        state_color: true
+        unit: hours
+
+  # --- Daily detail row: time off + adjustment ---
+  - type: horizontal-stack
+    cards:
+      - type: entity
+        entity: sensor.liners_daily_total_off_time
+        name: "Time Off Today"
+        state_color: true
+        unit: minutes
+      - type: entity
+        entity: input_number.liners_daily_adjustment
+        name: "Today's Adjustment"
+        state_color: true
+        unit: minutes
+
+  # --- 7-day bar chart (requires custom:mini-graph-card via HACS) ---
+  - type: custom:mini-graph-card
+    name: "Daily Wear Time (Last 7 Days) - Adjusted"
+    icon: mdi:chart-bar
+    show:
+      graph: bar
+      legend: false
+      icon: false
+    entities:
+      - entity: sensor.liners_adjusted_wear_time_6_days_ago
+        name: "6d ago"
+      - entity: sensor.liners_adjusted_wear_time_5_days_ago
+        name: "5d ago"
+      - entity: sensor.liners_adjusted_wear_time_4_days_ago
+        name: "4d ago"
+      - entity: sensor.liners_adjusted_wear_time_3_days_ago
+        name: "3d ago"
+      - entity: sensor.liners_adjusted_wear_time_2_days_ago
+        name: "2d ago"
+      - entity: sensor.liners_adjusted_wear_time_yesterday
+        name: "Yesterday"
+      - entity: sensor.liners_daily_wear_hours
+        name: "Today"
+    group_by: date
+    aggregate_func: last
+    group: true
+
+  # --- Adjustment active warning (only shows when adjustment != 0) ---
+  - type: conditional
+    conditions:
+      - entity: input_number.liners_daily_adjustment
+        state_not: "0.0"
+    card:
+      type: markdown
+      content: >
+        **Adjustment Active:** Today's time has been adjusted by
+        {{ states('input_number.liners_daily_adjustment') }} minutes.
+        This will be finalized at midnight.
+
+  # --- Time correction controls ---
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## Time Correction
+          Adjust today's recorded off-time if the tracker was toggled late or missed.
+
+      # Base vs adjusted comparison
+      - type: horizontal-stack
+        cards:
+          - type: markdown
+            content: >
+              **Base Tracked Time**
+
+              {{ (states('sensor.liners_off_time_today') | float * 60) | round(0) }} minutes
+          - type: entity
+            entity: sensor.liners_daily_total_off_time
+            name: "Adjusted Total"
+            state_color: true
+            unit: minutes
+          - type: entity
+            entity: input_number.liners_daily_adjustment
+            name: "Current Adjustment"
+            state_color: true
+            unit: minutes
+
+      # Reduce / Add controls side by side
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            title: "Less off-time"
+            show_header_toggle: false
+            entities:
+              - entity: input_number.liners_reduce_time_input
+                name: "Minutes to Reduce"
+                icon: mdi:minus-circle
+              - type: call-service
+                name: "Apply Reduction"
+                icon: mdi:minus
+                action_name: "Reduce"
+                service: script.reduce_liner_time
+                confirmation:
+                  text: "Reduce today's recorded off-time by the specified minutes?"
+          - type: entities
+            title: "More off-time"
+            show_header_toggle: false
+            entities:
+              - entity: input_number.liners_add_time_input
+                name: "Minutes to Add"
+                icon: mdi:plus-circle
+              - type: call-service
+                name: "Apply Addition"
+                icon: mdi:plus
+                action_name: "Add"
+                service: script.add_liner_time
+                confirmation:
+                  text: "Add the specified minutes to today's recorded off-time?"
+
+      # Reset button
+      - type: entities
+        title: "Reset Options"
+        show_header_toggle: false
+        entities:
+          - type: call-service
+            name: "Reset Today's Adjustment"
+            icon: mdi:restore
+            action_name: "Reset"
+            service: script.reset_liner_daily_adjustment
+            confirmation:
+              text: "Reset today's time adjustment to zero?"
+
+      # Status summary (only shows when adjustment is active)
+      - type: conditional
+        conditions:
+          - entity: input_number.liners_daily_adjustment
+            state_not: "0.0"
+        card:
+          type: markdown
+          content: >
+            ### Current Status
+
+            **Today's Adjustment:** {{ states('input_number.liners_daily_adjustment') }} minutes
+
+            **Effect:**
+
+            {% if states('input_number.liners_daily_adjustment') | float > 0 %}
+            Reducing recorded off-time (improving compliance)
+            {% else %}
+            Increasing recorded off-time (reducing compliance)
+            {% endif %}
