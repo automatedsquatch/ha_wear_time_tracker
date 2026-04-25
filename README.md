@@ -1,12 +1,21 @@
 # Wear Time Tracker for Home Assistant
 
-A complete Home Assistant package for tracking daily wear time of dental aligners, retainers, liners, or any device that needs to be worn for a target number of hours per day.
+I'm really bad at remembering things. Especially when it's not a habit yet. This home assistant gadget helped me build good habits around wearing my clear liner braces for the required 22 hours a day. 
+
+This could be used for anything you need to track over time. 
+You can add or remove time if you forget to track. I suggest adding an NFC tag to control the input boolean, as I found that to be the most reliable method.
+
+I used a combination of telegram and TTS messages to remind myself when i had them off for too long. For the TTS messages it works best if you pair it with BLE based speaker selection so that it reminds you via the nearest speaker. 
+This has been really helpful to me over the past year, and I felt like it would be a waste to simply delete it without sharing. I don't have a lot of experience making packages for home assistant.  I'm sure there's a better way of wrapping this, (and indeed many of the things you find here could be better) but hopefully this helps someone in this form. 
+
+If you need help feel free to reach out to me. I'm dcslv on reddit. 
+
 
 <p align="center">
   <img src="dashboard_mobile.png" alt="Wear Time Tracker Dashboard" width="300">
 </p>
 
-## What it does
+## Functions
 
 - **On/off toggle** to log when you remove/replace the device
 - **Session timer** showing how long the device has been out
