@@ -45,10 +45,10 @@ Open `variables.env` and fill in your own Home Assistant entities:
 
 | Variable | What it does | Examples |
 |---|---|---|
-| `NOTIFY_SERVICE` | The service called to send push notifications when a time threshold is reached. This should be whatever you normally use to get alerts on your phone. | `notify.mobile_app_james_phone`, `notify.notify`, `notify.pushover` |
+| `NOTIFY_SERVICE` | The service called to send push notifications when a time threshold is reached. This should be whatever you normally use to get alerts on your phone. | `notify.mobile_app_your_phone`, `notify.notify`, `notify.pushover` |
 | `TTS_SERVICE` | The text-to-speech service for spoken reminders. Only used when you're home. Pick whichever TTS engine you have configured. | `tts.google_translate_say`, `tts.cloud_say`, `tts.piper` |
 | `DEFAULT_SPEAKER` | The media_player entity where TTS announcements play. This is your "default" speaker for reminders. See [Room-Aware TTS](#room-aware-tts-optional) below if you want location-based routing. | `media_player.living_room_speaker`, `media_player.kitchen_display` |
-| `PRESENCE_SENSOR` | A binary sensor (or person entity) that is `on`/`home` when you're physically at home. TTS only plays when this is on - push notifications always fire regardless. If you don't have one, point it at any entity that stays `on`. | `person.james`, `binary_sensor.anyone_home` |
+| `PRESENCE_SENSOR` | A binary sensor (or person entity) that is `on`/`home` when you're physically at home. TTS only plays when this is on - push notifications always fire regardless. If you don't have one, point it at any entity that stays `on`. | `person.your_name`, `binary_sensor.anyone_home` |
 | `DEVICE_NAME` | A display name used in notification text and dashboard headers. Does not affect entity IDs. Pick whatever you're actually tracking. | `aligners`, `retainers`, `liners`, `trays`, `guard` |
 
 ### 2. Run the install script
