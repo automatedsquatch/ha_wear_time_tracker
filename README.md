@@ -2,6 +2,10 @@
 
 A complete Home Assistant package for tracking daily wear time of dental aligners, retainers, liners, or any device that needs to be worn for a target number of hours per day.
 
+<p align="center">
+  <img src="dashboard_mobile.png" alt="Wear Time Tracker Dashboard" width="300">
+</p>
+
 ## What it does
 
 - **On/off toggle** to log when you remove/replace the device
